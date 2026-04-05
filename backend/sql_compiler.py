@@ -135,7 +135,7 @@ from dsl_schema import ALLOWED_FIELDS,ALLOWED_TIME_FILTERS
 def compile_dsl(dsl:dict):
 
     base_query = """
-    SELECT DISTINCT s.company_name
+    SELECT DISTINCT s.symbol,s.company_name
     FROM symbol s
     """
 

@@ -38,10 +38,10 @@ def execute_query(sql, params):
 
     # Success response
     return {
-        "meta": {
-            "count": len(results)
-        },
-        "data": results
+        # "meta": {
+        #     "count": len(results)
+        # },
+        "Results": results
         }
     
 

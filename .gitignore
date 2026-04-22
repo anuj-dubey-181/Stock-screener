@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+__pycache2__/
+*.pyc
+*.pyd
+# ignore specific backend files
+backend/databases.py
+backend/insert_company.py
+backend/seed_data.py
+backend/test.py
+backend/view_details.py
+*.db

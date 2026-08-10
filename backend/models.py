@@ -1,76 +1,3 @@
-# from sqlalchemy import Column, Integer, String, Float, ForeignKey
-# from database import Base
-
-
-# class User(Base):
-#     __tablename__ = "users"
-
-#     id = Column(Integer, primary_key=True)
-#     email = Column(String, unique=True)
-#     password_hash = Column(String)
-
-
-# class Symbol(Base):
-#     __tablename__ = "symbol"
-
-#     id = Column(Integer, primary_key=True)
-#     symbol = Column(String, unique=True)
-#     sector = Column(String)
-#     company_name = Column(String,unique=True)
-#     industry = Column(String)
-    
-
-
-# class Fundamentals(Base):
-#     __tablename__ = "fundamentals"
-
-#     id = Column(Integer, primary_key=True)
-#     company_id = Column(Integer, ForeignKey("symbol.id"))
-#     pe = Column(Float)
-#     market_cap = Column(Float)
-#     revenue = Column(Float)
-#     promoter_holding = Column(Float)
-#     ebitda = Column(Float)
-#     peg_ratio = Column(Float)
-#     price_to_book = Column(Float)
-#     revenue_growth = Column(Float)
-#     profit_margin = Column(Float)
-
-
-# class HistoricalMetrics(Base):
-#     __tablename__ = "historical_metrics"
-
-#     id = Column(Integer, primary_key=True)
-#     company_id = Column(Integer,ForeignKey("symbol.id"))
-#     date = Column(String)
-#     ebitda = Column(Float)
-#     close_price = Column(Float)
-#     open_price = Column(Float)
-#     high_price = Column(Float)
-#     low_price = Column(Float)
-#     volume = Column(Float)
-
-
-# class Portfolio(Base):
-#     __tablename__ = "portfolio"
-
-#     id = Column(Integer, primary_key=True)
-#     user_id = Column(Integer)
-#     company_id = Column(Integer)
-#     quantity = Column(Float)
-#     buy_price = Column(Float)
-
-
-# class Alert(Base):
-#     __tablename__ = "alerts"
-
-#     id = Column(Integer, primary_key=True)
-#     user_id = Column(Integer)
-#     company_id = Column(Integer)
-#     metric = Column(String)
-#     operator = Column(String)
-#     value = Column(Float)
-
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, Date, DateTime, Boolean, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -89,6 +16,7 @@ class User(Base):
 
     portfolio = relationship("Portfolio", backref="user")
     alerts = relationship("Alert", backref="user")
+    is_active = Column(Boolean, default=True)
 
 
 # ================= SYMBOL (COMPANY) =================
@@ -96,7 +24,7 @@ class Symbol(Base):
     __tablename__ = "symbol"
 
     id = Column(Integer, primary_key=True)
-    symbol = Column(String(10), nullable=False, unique=True)
+    symbol = Column(String(20), nullable=False, unique=True)
     company_name = Column(String, nullable=False)
     sector = Column(String)
     industry = Column(String)
@@ -113,18 +41,53 @@ class Fundamentals(Base):
     __tablename__ = "fundamentals"
 
     id = Column(Integer, primary_key=True)
-    company_id = Column(Integer, ForeignKey("symbol.id"), nullable=False)
 
-    pe_ratio = Column(Float)
-    peg_ratio = Column(Float)
-    debt_fcf = Column(Float)
-    ebitda = Column(Float)
-    revenue = Column(Float)
-    promoter_holding = Column(Float)
+    company_id = Column(
+        Integer,
+        ForeignKey("symbol.id"),
+        nullable=False
+    )
+
     market_cap = Column(Float)
 
-    report_date = Column(Date, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    enterprise_value = Column(Float)
+
+    pe_ratio = Column(Float)
+
+    forward_pe = Column(Float)
+
+    peg_ratio = Column(Float)
+
+    price_to_book = Column(Float)
+
+    dividend_yield = Column(Float)
+
+    eps = Column(Float)
+
+    revenue = Column(Float)
+
+    ebitda = Column(Float)
+
+    net_income = Column(Float)
+
+    total_cash = Column(Float)
+
+    total_debt = Column(Float)
+
+    current_ratio = Column(Float)
+
+    quick_ratio = Column(Float)
+
+    roe = Column(Float)
+
+    roa = Column(Float)
+
+    report_date = Column(Date)
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
 
 
 # ================= HISTORICAL METRICS =================
@@ -132,15 +95,40 @@ class HistoricalMetrics(Base):
     __tablename__ = "historical_metrics"
 
     id = Column(Integer, primary_key=True)
-    company_id = Column(Integer, ForeignKey("symbol.id"), nullable=False)
 
+    company_id = Column(
+        Integer,
+        ForeignKey("symbol.id"),
+        nullable=False
+    )
+
+    # Financials
     quarter = Column(Date)
+
     revenue = Column(Float)
     ebitda = Column(Float)
     net_profit = Column(Float)
+
+    eps = Column(Float)
+
+    # Market Data
+    open_price = Column(Float)
+    high_price = Column(Float)
+    low_price = Column(Float)
     close_price = Column(Float)
-    date = Column(DateTime, default=datetime.utcnow)
+    adjusted_close = Column(Float)
     volume = Column(Float)
+
+    # Growth Metrics
+    revenue_growth = Column(Float)
+    profit_growth = Column(Float)
+
+    date = Column(Date)
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
 
 
 
@@ -149,14 +137,60 @@ class Portfolio(Base):
     __tablename__ = "portfolio"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    company_id = Column(Integer, ForeignKey("symbol.id"), nullable=False)
 
-    quantity = Column(Integer)
-    buy_price = Column(Float)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False
+    )
 
-    added_at = Column(DateTime, default=datetime.utcnow)
+    company_id = Column(
+        Integer,
+        ForeignKey("symbol.id"),
+        nullable=False
+    )
 
+    quantity = Column(Float)
+
+    avg_buy_price = Column(Float)
+
+    invested_amount = Column(Float)
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
+
+    company = relationship("Symbol")
+
+
+
+class PortfolioTransaction(Base):
+    __tablename__ = "portfolio_transactions"
+
+    id = Column(Integer, primary_key=True)
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id")
+    )
+
+    company_id = Column(
+        Integer,
+        ForeignKey("symbol.id")
+    )
+
+    transaction_type = Column(String)
+    # BUY / SELL
+
+    quantity = Column(Float)
+
+    price = Column(Float)
+
+    transaction_date = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
     company = relationship("Symbol")
 
 
@@ -165,14 +199,64 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
-    condition_json = Column(JSON)
-    company_id = Column(Integer)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False
+    )
+
+    company_id = Column(
+        Integer,
+        ForeignKey("symbol.id")
+    )
 
     metric = Column(String)
-    operator = Column(String)
-    value = Column(Float)
-    is_active = Column(Boolean, default=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    operator = Column(String)
+
+    value = Column(Float)
+
+    is_active = Column(
+        Boolean,
+        default=True
+    )
+
+    trigger_count = Column(
+        Integer,
+        default=0
+    )
+
+    last_triggered_at = Column(DateTime)
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
+ # ================= ALERT History========
+
+class AlertHistory(Base):
+    __tablename__ = "alert_history"
+
+    id = Column(Integer, primary_key=True)
+
+    alert_id = Column(
+        Integer,
+        ForeignKey("alerts.id"),
+        nullable=False
+    )
+
+    company_id = Column(
+        Integer,
+        ForeignKey("symbol.id"),
+        nullable=False
+    )
+
+    metric = Column(String)
+
+    current_value = Column(Float)
+
+    triggered_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )

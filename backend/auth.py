@@ -1,7 +1,18 @@
 from jose import jwt
 from passlib.context import CryptContext
 
-SECRET_KEY = "secret123"
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+
+if not SECRET_KEY:
+    raise RuntimeError(
+        "JWT_SECRET_KEY is not configured."
+    )
+
 ALGORITHM = "HS256"
 
 pwd_context = CryptContext(schemes=["bcrypt"],deprecated="auto")

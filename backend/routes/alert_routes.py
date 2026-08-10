@@ -1,128 +1,155 @@
-# from fastapi import APIRouter, Depends
-# from schemas import AlertCreate
-# from models import Alert, Symbol
-# from dependencies import get_db, get_current_user
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException
+)
 
-# router = APIRouter(prefix="/alerts")
+from sqlalchemy.orm import Session
 
+from database import get_db
 
-# @router.post("/")
-# def create_alert(data: AlertCreate, db=Depends(get_db), user=Depends(get_current_user)):
-#     company = db.query(Symbol).filter(Symbol.symbol == data.symbol).first()
+from utils.dependencies import get_current_user
 
-#     alert = Alert(
-#         user_id=user.id,
-#         company_id=company.id,
-#         metric=data.metric,
-#         operator=data.operator,
-#         value=data.value
-#         # condition_json=data.condition_json
-#     )
+from schemas import (
+    AlertCreateRequest,
+    AlertEvaluationResponse
+)
 
-#     db.add(alert)
-#     db.commit()
-
-#     return {"message": "Alert created"}
-
-from fastapi import APIRouter, Depends, HTTPException
-from schemas import AlertCreate
-from models import Alert, Symbol
-from dependencies import get_db, get_current_user
-
-router = APIRouter(prefix="/alerts")
+from services.alert_service import (
+    create_alert,
+    get_user_alerts,
+    evaluate_alert,
+    set_alert_status,
+    get_alert_history
+)
 
 
-# ================= CREATE =================
-@router.post("/")
-def create_alert(
-    data: AlertCreate,
-    db=Depends(get_db),
-    user=Depends(get_current_user)
+router = APIRouter(
+    prefix="/alerts",
+    tags=["Alerts"]
+)
+
+@router.post("")
+def create(
+    request: AlertCreateRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
 ):
-    company = db.query(Symbol).filter(Symbol.symbol == data.symbol).first()
 
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
+    try:
 
-# 🔴 CHECK FOR DUPLICATE
-    existing_alert = db.query(Alert).filter(
-        Alert.user_id == user.id,
-        Alert.company_id == company.id,
-        Alert.metric == data.metric,
-        Alert.operator == data.operator,
-        Alert.value == data.value
-    ).first()
+        alert = create_alert(
+            db=db,
+            user_id=current_user.id,
+            symbol=request.symbol,
+            field=request.field,
+            operator=request.operator,
+            target_value=request.target_value,
+            is_active=request.is_active
+        )
 
-    if existing_alert:
-        existing_alert.value = data.value
-        db.commit()
-        return { "status":"duplicate",
-            "message": "🔁 Alert updated"}
+        return {
+            "success": True,
+            "message": "Alert created successfully.",
+            "data": alert
+        }
 
-    alert = Alert(
-        user_id=user.id,
-        company_id=company.id,
-        metric=data.metric,
-        operator=data.operator,
-        value=data.value,
-        condition_json=data.condition_json  # ✅ NOW ENABLED
-    )
+    except ValueError as e:
 
-    db.add(alert)
-    db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
 
-    return {"message": "Alert created"}
-
-
-# ================= GET =================
-@router.get("/")
+@router.get("")
 def get_alerts(
-    db=Depends(get_db),
-    user=Depends(get_current_user)
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
 ):
-    alerts = db.query(Alert, Symbol).join(
-        Symbol, Alert.company_id == Symbol.id
-    ).filter(
-        Alert.user_id == user.id
-    ).all()
 
-    result = []
-    for a, s in alerts:
-        result.append({
-            "id": a.id,
-            "symbol": s.symbol,
-            "company_name": s.company_name,
-            "metric": a.metric,
-            "operator": a.operator,
-            "value": a.value,
-            "condition_json": a.condition_json,
-            "is_active": a.is_active
-        })
+    return {
+        "success": True,
+        "results": get_user_alerts(
+            db,
+            current_user.id
+        )
+    }
 
-    return result
-
-
-# ================= DELETE =================
-@router.delete("/{alert_id}")
-def delete_alert(
+@router.post("/{alert_id}/check")
+def check_alert(
     alert_id: int,
-    db=Depends(get_db),
-    user=Depends(get_current_user)
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
 ):
-    alert = db.query(Alert).filter(
-        Alert.id == alert_id,
-        Alert.user_id == user.id
-    ).first()
 
-    if not alert:
-        raise HTTPException(status_code=404, detail="Alert not found")
+    try:
 
-    db.delete(alert)
-    db.commit()
+        return evaluate_alert(
+            db=db,
+            user_id=current_user.id,
+            alert_id=alert_id
+        )
 
-    return {"message": "Alert deleted"}
+    except ValueError as e:
 
-@router.get("/check")
-def check_alerts_api(db=Depends(get_db)):
-    from alert_engine import check_alerts
-    return check_alerts(db)
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+
+@router.patch("/{alert_id}/status")
+def update_status(
+    alert_id: int,
+    is_active: bool,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+
+    try:
+
+        alert = set_alert_status(
+            db=db,
+            user_id=current_user.id,
+            alert_id=alert_id,
+            is_active=is_active
+        )
+
+        return {
+            "success": True,
+            "message": "Alert status updated.",
+            "data": alert
+        }
+
+    except ValueError as e:
+
+        raise HTTPException(
+            status_code=404,
+            detail=str(e)
+        )
+
+@router.get("/{alert_id}/history")
+def history(
+    alert_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+
+    try:
+
+        results = get_alert_history(
+            db=db,
+            user_id=current_user.id,
+            alert_id=alert_id
+        )
+
+        return {
+            "success": True,
+            "results": results
+        }
+
+    except ValueError as e:
+
+        raise HTTPException(
+            status_code=404,
+            detail=str(e)
+        )

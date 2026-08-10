@@ -1,198 +1,284 @@
-# import sqlite3
-
-# # db_path = "data/stock_screener.db"
-
-
-# class SQLCompiler:
-
-#     def __init__(self, db_path = "screener.db"):
-
-#         self.db_path = db_path
-#         self.params = []
-#         self.field_table_map = self._load_schema()
-
-#     def _load_schema(self):
-#         """
-#         Load database schema dynamically
-#         Maps column -> table
-#         """
-
-#         conn = sqlite3.connect(self.db_path)
-#         cursor = conn.cursor()
-
-#         field_map = {}
-
-#         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-
-#         tables = [row[0] for row in cursor.fetchall()]
-
-#         for table in tables:
-
-#             cursor.execute(f"PRAGMA table_info({table})")
-
-#             for col in cursor.fetchall():
-
-#                 column_name = col[1]
-
-#                 field_map[column_name] = table
-
-#         conn.close()
-
-#         return field_map
-
-#     def _compile_conditions(self, conditions, logic):
-
-#         clauses = []
-
-#         for cond in conditions:
-
-#             field = cond["field"]
-#             operator = cond["operator"]
-#             value = cond["value"]
-
-#             if field not in self.field_table_map:
-#                 raise ValueError(f"Field '{field}' not found in database")
-
-#             table = self.field_table_map[field]
-
-#             clauses.append(f"{table}.{field} {operator} ?")
-
-#             self.params.append(value)
-
-#         return f" {logic} ".join(clauses)
-
-#     def compile(self, dsl):
-
-#         entity = dsl.get("entity", "symbol")
-
-#         logic = dsl.get("logic", "AND")
-
-#         conditions = dsl.get("conditions", [])
-
-#         where_clause = self._compile_conditions(conditions, logic)
-
-#         base_query = """
-#         SELECT symbols.symbol
-#         FROM symbols
-#         """
-
-#         tables_needed = set()
-
-#         for cond in conditions:
-
-#             table = self.field_table_map[cond["field"]]
-
-#             if table != "symbols":
-
-#                 tables_needed.add(table)
-
-#         joins = ""
-
-#         for table in tables_needed:
-
-#             joins += f"""
-#             LEFT JOIN {table}
-#             ON symbols.id = {table}.company_id
-#             """
-
-#         sql = base_query + joins
-
-#         if where_clause:
-
-#             sql += f" WHERE {where_clause}"
-
-#         # Time Filter
-#         time_filter = dsl.get("time_filter")
-
-#         if time_filter:
-
-#             if time_filter["type"] == "last_n_quarters":
-
-#                 sql += """
-#                 AND historical_metrics.quarter IN (
-#                     SELECT quarter
-#                     FROM historical_metrics
-#                     ORDER BY quarter DESC
-#                     LIMIT ?
-#                 )
-#                 """
-
-#                 self.params.append(time_filter["value"])
-
-#         # Limit
-#         limit = dsl.get("limit", 20)
-
-#         sql += " LIMIT ?"
-
-#         self.params.append(limit)
-
-#         return sql, self.params
-    
-    
-from dsl_schema import ALLOWED_FIELDS,ALLOWED_TIME_FILTERS
+from dsl_schema import (
+    VALID_FIELDS,
+    FIELD_TABLES
+)
 
 
-def compile_dsl(dsl:dict):
+# ============================================================
+# SQL Compiler
+# ============================================================
 
-    base_query = """
-    SELECT DISTINCT s.symbol,s.company_name
+def compile_dsl(dsl: dict):
+    """
+    Convert DSL into parameterized PostgreSQL SQL.
+    Returns:
+        sql (str)
+        params (dict)
+    """
+
+    # --------------------------------------------------------
+    # Base Query
+    # --------------------------------------------------------
+
+    select_clause = """
+    SELECT DISTINCT
+    s.id,
+    s.symbol,
+    s.company_name,
+    s.sector,
+    s.industry,
+    s.exchange
+    """
+
+    from_clause = """
     FROM symbol s
     """
 
-    joins =set ()
+    joins = set()
+
     where_clauses = []
-    values = []
 
-    for cond in dsl["conditions"]:
+    params = {}
 
-        field = cond["field"]
-        operator = cond["operator"]
-        value = cond["value"]
+    param_index = 0
 
-        column = ALLOWED_FIELDS[field]
+    # ========================================================
+    # Conditions
+    # ========================================================
 
-        table = column.split(".")[0]
+    for condition in dsl["conditions"]:
 
-        if table == "fundamentals":
-            joins.add(
-                "JOIN fundamentals f ON s.id = f.id"
+        field = condition["field"]
+
+        operator = condition["operator"].lower()
+
+        value = condition["value"]
+
+        table = FIELD_TABLES[field]
+
+        column = VALID_FIELDS[field]
+
+        # ----------------------------------------------------
+        # Replace aliases
+        # ----------------------------------------------------
+
+        if table == "symbol":
+
+            column = column.replace(
+                "symbol.",
+                "s."
             )
-            column = column.replace("fundamentals", "f")
 
-        if table == "historical_metrics":
-            joins.add(
-                "JOIN historical_metrics h ON s.id = h.id"
+        elif table == "fundamentals":
+
+            joins.add("""
+            JOIN fundamentals f
+            ON s.id = f.company_id
+            """)
+
+            column = column.replace(
+                "fundamentals.",
+                "f."
             )
-            column = column.replace("historical_metrics", "h")
 
-        where_clauses.append(f"{column} {operator} ?")
+        elif table == "historical_metrics":
 
-        values.append(value)
+            joins.add("""
+            JOIN historical_metrics h
+            ON s.id = h.company_id
+            """)
 
-    where_sql = f" {dsl['logic']} ".join(where_clauses)
+            column = column.replace(
+                "historical_metrics.",
+                "h."
+            )
 
-    sql = base_query + " ".join(joins)
+        # ====================================================
+        # Normal Operators
+        # ====================================================
 
-    if where_sql:
-        sql += " WHERE " + where_sql
+        if operator in {
 
-    
-     
+            "=",
+            "!=",
+            ">",
+            "<",
+            ">=",
+            "<="
+
+        }:
+
+            key = f"p{param_index}"
+
+            param_index += 1
+
+            where_clauses.append(
+
+                f"{column} {operator} :{key}"
+
+            )
+
+            params[key] = value
+
+        # ====================================================
+        # BETWEEN
+        # ====================================================
+
+        elif operator == "between":
+
+            k1 = f"p{param_index}"
+
+            param_index += 1
+
+            k2 = f"p{param_index}"
+
+            param_index += 1
+
+            where_clauses.append(
+
+                f"{column} BETWEEN :{k1} AND :{k2}"
+
+            )
+
+            params[k1] = value[0]
+
+            params[k2] = value[1]
+
+        # ====================================================
+        # IN
+        # ====================================================
+
+        elif operator == "in":
+
+            placeholders = []
+
+            for item in value:
+
+                key = f"p{param_index}"
+
+                param_index += 1
+
+                placeholders.append(f":{key}")
+
+                params[key] = item
+
+            where_clauses.append(
+
+                f"{column} IN ({','.join(placeholders)})"
+
+            )
+
+        # ====================================================
+        # LIKE
+        # ====================================================
+
+        elif operator == "like":
+
+            key = f"p{param_index}"
+
+            param_index += 1
+
+            where_clauses.append(
+
+                f"{column} ILIKE :{key}"
+
+            )
+
+            params[key] = f"%{value}%"
+
+    # ========================================================
+    # Time Filter
+    # ========================================================
+
     if "time_filter" in dsl:
 
         tf = dsl["time_filter"]
 
-        if tf["type"] == "last_n_quarters":
+        joins.add("""
+        JOIN historical_metrics h
+        ON s.id = h.company_id
+        """)
+
+        tf_type = tf["type"]
+
+        if tf_type == "latest":
+
+            where_clauses.append("""
+
+            h.date = (
+
+                SELECT MAX(date)
+
+                FROM historical_metrics
+
+            )
+
+            """)
+
+        elif tf_type == "last_n_quarters":
 
             months = tf["value"] * 3
 
-            joins.add("JOIN historical_metrics h ON s.id = h.company_id")
+            where_clauses.append(
 
-            sql += f"""
-            AND h.date >= date('now', '-{months} months')
-            """
+                f"""
 
-    if "limit" in dsl:
-        sql += f" LIMIT {dsl['limit']}"
+                h.date >=
 
-    return sql.strip(), values
+                CURRENT_DATE - INTERVAL '{months} months
+
+                """
+
+            )
+
+        elif tf_type == "last_n_years":
+
+            years = tf["value"]
+
+            where_clauses.append(
+
+                f"""
+
+                h.date >=
+
+                CURRENT_DATE - INTERVAL '{years} years'
+
+                """
+
+            )
+
+    # ========================================================
+    # Build SQL
+    # ========================================================
+
+    sql = select_clause
+
+    sql += from_clause
+
+    if joins:
+
+        sql += "\n"
+
+        sql += "\n".join(sorted(joins))
+
+    if where_clauses:
+
+        sql += "\nWHERE\n"
+        logic=dsl.get('logic','AND').upper()
+        sql += f"\n {logic} ".join(
+
+            where_clauses
+
+        )
+
+    limit = dsl.get(
+
+        "limit",
+
+        20
+
+    )
+
+    sql += f"\nLIMIT {limit}"
+
+    return sql.strip(), params

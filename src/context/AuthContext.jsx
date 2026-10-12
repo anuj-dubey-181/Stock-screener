@@ -2,7 +2,7 @@ import { createContext, useContext, useState } from 'react'
 
 const AuthContext = createContext(null)
 
-const API_URL = 'https://stock-screener-o8v1.onrender.com'
+const API_URL = 'https://stock-screener-backend-okep.onrender.com'
 
 
 export function AuthProvider({ children }) {

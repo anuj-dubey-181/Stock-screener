@@ -1,5 +1,5 @@
 
-const API_URL = 'https://stock-screener-o8v1.onrender.com';
+const API_URL = 'https://stock-screener-backend-okep.onrender.com';
 
 export async function apiRequest(endpoint, options = {}) {
   const token = localStorage.getItem('access_token');

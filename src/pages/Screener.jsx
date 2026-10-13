@@ -116,7 +116,10 @@ function Screener() {
         'Show companies with PE below 25',
 
         'Show IT companies',
-
+        
+        'show healthcare companies having eps greater than 50',
+        
+        'Give me financial services company with peg below 1 and price/book between 1 and 1.5',
 
         'Show companies with market cap above 1 lakh crore',
 
